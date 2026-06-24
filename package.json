@@ -1,0 +1,19 @@
+{
+  "name": "aw-client-report-portal",
+  "version": "1.0.0",
+  "description": "EF Client Report Portal — structured data entry + automated math + SACS/TCC PDF generation",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pdfkit": "^0.15.0"
+  }
+}
