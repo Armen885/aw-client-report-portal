@@ -22,12 +22,12 @@ function wrap(fn) {
   };
 }
 
-app.get("/api/clients", wrap((req, res) => {
-  res.json(store.listClients());
+app.get("/api/clients", wrap(async (req, res) => {
+  res.json(await store.listClients());
 }));
 
-app.get("/api/clients/:id", wrap((req, res) => {
-  const client = store.getClient(Number(req.params.id));
+app.get("/api/clients/:id", wrap(async (req, res) => {
+  const client = await store.getClient(Number(req.params.id));
   if (!client) return res.status(404).json({ error: "Client not found" });
   res.json(client);
 }));
@@ -42,40 +42,40 @@ function validateClient(data) {
   return null;
 }
 
-app.post("/api/clients", wrap((req, res) => {
+app.post("/api/clients", wrap(async (req, res) => {
   const err = validateClient(req.body);
   if (err) return res.status(400).json({ error: err });
-  res.status(201).json(store.createClient(req.body));
+  res.status(201).json(await store.createClient(req.body));
 }));
 
-app.put("/api/clients/:id", wrap((req, res) => {
+app.put("/api/clients/:id", wrap(async (req, res) => {
   const id = Number(req.params.id);
-  if (!store.getClient(id)) return res.status(404).json({ error: "Client not found" });
+  if (!(await store.getClient(id))) return res.status(404).json({ error: "Client not found" });
   const err = validateClient(req.body);
   if (err) return res.status(400).json({ error: err });
-  res.json(store.updateClient(id, req.body));
+  res.json(await store.updateClient(id, req.body));
 }));
 
-app.delete("/api/clients/:id", wrap((req, res) => {
-  store.deleteClient(Number(req.params.id));
+app.delete("/api/clients/:id", wrap(async (req, res) => {
+  await store.deleteClient(Number(req.params.id));
   res.json({ ok: true });
 }));
 
-app.get("/api/clients/:id/prefill", wrap((req, res) => {
-  const client = store.getClient(Number(req.params.id));
+app.get("/api/clients/:id/prefill", wrap(async (req, res) => {
+  const client = await store.getClient(Number(req.params.id));
   if (!client) return res.status(404).json({ error: "Client not found" });
-  res.json({ client, lastReport: store.latestReport(client.id) });
+  res.json({ client, lastReport: await store.latestReport(client.id) });
 }));
 
-app.get("/api/clients/:id/reports", wrap((req, res) => {
-  const client = store.getClient(Number(req.params.id));
+app.get("/api/clients/:id/reports", wrap(async (req, res) => {
+  const client = await store.getClient(Number(req.params.id));
   if (!client) return res.status(404).json({ error: "Client not found" });
-  const reports = store.listReports(client.id).map((r) => ({ ...r, calc: Calc.computeReport(client, r) }));
+  const reports = (await store.listReports(client.id)).map((r) => ({ ...r, calc: Calc.computeReport(client, r) }));
   res.json(reports);
 }));
 
-app.post("/api/clients/:id/reports", wrap((req, res) => {
-  const client = store.getClient(Number(req.params.id));
+app.post("/api/clients/:id/reports", wrap(async (req, res) => {
+  const client = await store.getClient(Number(req.params.id));
   if (!client) return res.status(404).json({ error: "Client not found" });
   const data = req.body || {};
   if (!data.reportDate) return res.status(400).json({ error: "Report date is required." });
@@ -86,27 +86,27 @@ app.post("/api/clients/:id/reports", wrap((req, res) => {
   if (missing.length > 0) {
     return res.status(400).json({ error: "Missing required fields.", missing });
   }
-  const report = store.createReport(client.id, data, client);
+  const report = await store.createReport(client.id, data, client);
   res.status(201).json({ report, calc: Calc.computeReport(client, report) });
 }));
 
-function loadReport(id) {
-  const report = store.getReport(id);
+async function loadReport(reportId) {
+  const report = await store.getReport(reportId);
   if (!report) return null;
-  const client = store.getClient(report.clientId);
+  const client = await store.getClient(report.clientId);
   const calc = Calc.computeReport(client, report);
   calc.reportDate = report.reportDate;
   return { report, client, calc };
 }
 
-app.get("/api/reports/:id", wrap((req, res) => {
-  const data = loadReport(Number(req.params.id));
+app.get("/api/reports/:id", wrap(async (req, res) => {
+  const data = await loadReport(Number(req.params.id));
   if (!data) return res.status(404).json({ error: "Report not found" });
   res.json(data);
 }));
 
-app.delete("/api/reports/:id", wrap((req, res) => {
-  store.deleteReport(Number(req.params.id));
+app.delete("/api/reports/:id", wrap(async (req, res) => {
+  await store.deleteReport(Number(req.params.id));
   res.json({ ok: true });
 }));
 
@@ -116,26 +116,23 @@ function safeName(client, kind) {
   return `${base}.pdf`;
 }
 
-function sendPdf(generate) {
+function sendPdf(kind, generate) {
   return wrap(async (req, res) => {
-    const data = loadReport(Number(req.params.id));
+    const data = await loadReport(Number(req.params.id));
     if (!data) return res.status(404).json({ error: "Report not found" });
     const buf = await generate(data);
     const disposition = req.query.dl ? "attachment" : "inline";
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName(data.client, req.params.kind)}"`);
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName(data.client, kind)}"`);
     res.send(buf);
   });
 }
 
-app.get("/api/reports/:id/sacs.pdf", (req, res, next) => { req.params.kind = "SACS"; next(); },
-  sendPdf((data) => generateSacs(data.client, data.calc)));
+app.get("/api/reports/:id/sacs.pdf", sendPdf("SACS", (data) => generateSacs(data.client, data.calc)));
+app.get("/api/reports/:id/tcc.pdf", sendPdf("TCC", (data) => generateTcc(data.client, data.report, data.calc)));
 
-app.get("/api/reports/:id/tcc.pdf", (req, res, next) => { req.params.kind = "TCC"; next(); },
-  sendPdf((data) => generateTcc(data.client, data.report, data.calc)));
-
-app.post("/api/reports/:id/canva", wrap((req, res) => {
-  const data = loadReport(Number(req.params.id));
+app.post("/api/reports/:id/canva", wrap(async (req, res) => {
+  const data = await loadReport(Number(req.params.id));
   if (!data) return res.status(404).json({ error: "Report not found" });
   if (!process.env.CANVA_API_KEY) {
     return res.status(200).json({
@@ -154,9 +151,13 @@ app.post("/api/reports/:id/canva", wrap((req, res) => {
 
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-app.listen(PORT, () => {
-  console.log(`AW Client Report Portal running at http://localhost:${PORT}`);
-  console.log(`Database: ${store.DB_PATH}`);
-});
+if (require.main === module) {
+  store.ready().then(() => {
+    app.listen(PORT, () => {
+      console.log(`AW Client Report Portal running at http://localhost:${PORT}`);
+      console.log(`Database: ${store.DB_TARGET}`);
+    });
+  });
+}
 
 module.exports = app;

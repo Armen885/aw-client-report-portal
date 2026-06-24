@@ -25,8 +25,9 @@ npm run dev       # start with auto-reload (node --watch)
 node scripts/smoke.mjs   # end-to-end smoke test (server must be running)
 ```
 
-Requires **Node.js ≥ 22.5** (uses the built-in `node:sqlite` module — no native
-build step, no external database).
+Requires **Node.js ≥ 22.5**. Persistence uses libSQL (`@libsql/client`): a local
+SQLite file for development, or a Turso cloud database in production — selected by
+environment variables, no code change.
 
 ---
 
@@ -41,7 +42,7 @@ identical to what was asked for:
 |-------|----------------|-----------|-----|
 | Frontend | HTML + CSS + JS | Vanilla HTML/CSS/JS SPA | No framework overhead, as requested |
 | Backend | Python | Node + Express | Available toolchain; same role |
-| Database | SQLite | `node:sqlite` (built-in) | Zero native deps |
+| Database | SQLite | libSQL (`@libsql/client`) | Local file for dev, Turso cloud in prod — same code |
 | PDF | ReportLab / WeasyPrint | pdfkit | Pure-JS fixed-coordinate drawing (1:1 with ReportLab's canvas model) |
 | AI | None | None | Pure deterministic math, as specified |
 
@@ -55,7 +56,9 @@ so the math can never drift between preview and output.
 
 ```
 server.js                 Express app — static portal + JSON API + PDF downloads
-db.js                     node:sqlite schema + CRUD (clients, accounts, reports, balances)
+db.js                     libSQL schema + CRUD (clients, accounts, reports, balances)
+api/index.js              Vercel serverless entrypoint (exports the Express app)
+vercel.json               Vercel build/route config
 public/calculations.js    Deterministic SACS/TCC math (shared server + browser)
 public/index.html         SPA shell
 public/app.js             Hash-routed views, forms, live totals
@@ -122,7 +125,16 @@ scripts/smoke.mjs         End-to-end API + PDF smoke test
   entry only, intentionally, per the PRD.
 - Single-tenant, no auth — intended for a 3-person internal team.
 
-## Deployment (Railway)
+## Deployment
 
-Set a persistent volume and point `RAILWAY_DATABASE_PATH` at a file on it
-(e.g. `/data/portal.db`). `npm start` runs the server on `$PORT`.
+### Vercel + Turso (serverless)
+
+1. Create a free Turso database and an auth token (`turso db create`, `turso db show --url`, `turso db tokens create`).
+2. In the Vercel project, set env vars `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
+3. Deploy: `vercel --prod`. `vercel.json` routes all requests to `api/index.js`,
+   which serves the Express app; the schema is created automatically on first request.
+
+### Railway (persistent server + volume)
+
+Mount a volume and point `RAILWAY_DATABASE_PATH` at a file on it (e.g. `/data/portal.db`).
+`npm start` runs the server on `$PORT` using a local SQLite file — no Turso needed.
