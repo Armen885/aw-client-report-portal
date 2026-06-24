@@ -1,7 +1,7 @@
 node_modules/
-data/*.db
-data/*.db-*
-data/*.pdf
-data/*.log
+data/
 .env
+.env.*
+!.env.example
 .DS_Store
+.vercel
